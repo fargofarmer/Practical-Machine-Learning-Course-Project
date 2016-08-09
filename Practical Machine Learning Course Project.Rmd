@@ -1,0 +1,104 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "PK"
+date: "August 7, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##Predicting the maner in which a group of people excercised by analyzing the data they collected using devises using Fitbit.
+
+###Synopsis
+####This project addresses predicting the maner in which six(6) people of a group excerised. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways and recording the data using devices such as Fitbit, NikeFuelband, etc. and  by attaching accelorometers on the forearm, arm, belt and dumbell.There are five classifications of this exercise, one method is the correct form of the exercise while the other four are common mistakes: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(gridExtra)
+```
+
+###1. Loading the Data
+####Fitbit excercise data was downloaded from the following links: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+####https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+####and read into a data file using read.csv() function.
+```{r}
+pmltraining<-read.csv("pml-training.csv")
+pmltesting<-read.csv("pml-testing.csv")
+```
+###2. Partitioning The Data
+####Once the data was loaded, the training data file was partitioned by creating a training subset with 70% of the original training data set to be used for training data and the remaining 30% to be used as the testing set.
+```{r}
+set.seed(223)
+
+ptraining <- createDataPartition(y=pmltraining$classe, p=0.7, list=FALSE)
+training <- pmltraining[ptraining, ]
+testing<-pmltraining[-ptraining,]
+```
+###3.Identifying the Non Missing Data
+####The data provided has many variables with missing data as well as information that is not relevant to the question being analyzed. Relevant variables are extracted using pattern recognition for relevant strings, leaving 52 variables.
+```{r}
+nacolnames <- sapply(names(pmltesting), function(x) all(is.na(pmltesting[,x])==TRUE))
+nanames <- names(nacolnames)[nacolnames==FALSE]
+nanames <- nanames[-(1:7)]
+nanames <- nanames[1:(length(nanames)-1)]
+```
+###Building The Models
+####Three machine learning tools, rpart, random forest, and gbm, and were used to build the predictive models and comapred the results.
+```{r}
+model_cart <- train(classe ~ ., data=training[, c('classe', nanames)],trControl=trainControl(method='cv', number = 4), method='rpart')
+save(model_cart, file='./ModelFitCART.RData')
+####Plotting the decision tree 
+fancyRpartPlot(model_cart$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+
+model_gbm <- train(classe ~ ., data=training[, c('classe', nanames)], trControl=trainControl(method='cv', number = 4), method='gbm')
+save(model_gbm, file='./ModelFitGBM.RData')
+model_rf <- train(classe ~ ., data=training[, c('classe', nanames)], trControl=trainControl(method='cv', number = 4), method='rf')
+save(model_rf, file='./ModelFitRF.RData')
+```
+###In Samaple and Out of Sample Error
+###The in sample error is error rate when the model is used to predict the training set it is based off. This error is going to be much less than the model predicting another dataset (out of sample error). 
+```{r}
+predCART <- predict(model_cart, newdata=testing)
+cmCART <- confusionMatrix(predCART, testing$classe)
+predGBM <- predict(model_gbm, newdata=testing)
+cmGBM <- confusionMatrix(predGBM, testing$classe)
+predRF <- predict(model_rf, newdata=testing)
+cmRF <- confusionMatrix(predRF, testing$classe)
+AccuracyResults <- data.frame(
+  Model = c('CART', 'GBM', 'RF'),
+  Accuracy = rbind(cmCART$overall[1], cmGBM$overall[1], cmRF$overall[1])
+)
+print(AccuracyResults)
+```
+####Based on accuracy results, The random forest model has a 99.35% accuracy, far superior to the rpart method and slightly better than gbm method.Therefore, random forest model was used to validate the data on testing set.
+```{r}
+####Twenty most important variables in randomm forest model are
+varImp(model_rf)
+```
+###Plots
+```{r}
+plot1<-qplot(yaw_belt,pitch_belt,colour=classe,data=training)
+plot2<-qplot(yaw_belt,pitch_forearm,colour=classe,data=training)
+grid.arrange(plot1,plot2,ncol=2)
+```
+
+###Testing Answers
+```{r}
+predtestanswers<-predict(model_rf, newdata=pmltesting)
+ValidationPredictionResults <- data.frame(
+  problem_id=pmltesting$problem_id,
+  predicted=predtestanswers
+)
+print(ValidationPredictionResults)
+```
+
+###Conclusions
+####Random Forest was a superior model than the other two gbma and rpart models. The nominal categories were dependent on various variables and the interaction between them. The RF model had more than 99% accuracy and fitted well to other subsamples of the data. However, the algorithm may not have as high of accuracy on other samples, particularly ones with different subjects.
